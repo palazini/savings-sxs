@@ -178,7 +178,7 @@
   <script type="module">
   // ==== Firebase (multiusuário em tempo real) ====
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getFirestore, doc, setDoc, onSnapshot, serverTimestamp, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getFirestore, doc, setDoc, onSnapshot, serverTimestamp, enableIndexedDbPersistence, deleteField } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
   import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
   const firebaseConfig = {
@@ -226,8 +226,29 @@
   function queueWrite(key, refFactory, patch) {
     if (!cloud.enabled || !db) return;
     clearTimeout(debounces[key]);
+
+    // Normaliza: se valor vier null/"", apagamos o campo no Firestore
+    const norm = {};
+    Object.keys(patch || {}).forEach(k => {
+      const v = patch[k];
+      if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
+        // objetos (ex.: base.tinta) mantemos como estão
+        norm[k] = v;
+      } else {
+        norm[k] = (v === null || v === '') ? deleteField() : v;
+      }
+    });
+
     debounces[key] = setTimeout(async () => {
-      try { await setDoc(refFactory(), { ...patch, lastEditedAt: serverTimestamp(), lastEditedBy: currentUser?.uid || 'anon' }, { merge: true }); }
+      try {
+        await setDoc(
+          refFactory(),
+          { ...norm, lastEditedAt: serverTimestamp(), lastEditedBy: currentUser?.uid || 'anon' },
+          { merge: true }
+        );
+      } catch (e) { console.warn('Falha ao salvar', key, e); }
+    }, 350);
+  }, { merge: true }); }
       catch (e) { console.warn('Falha ao salvar', key, e); }
     }, 350);
   }
@@ -335,11 +356,42 @@
     // DADOS MENSAIS
     months.forEach(m => {
       try {
-        onSnapshot(docMonth('tinta', m.key), (snap) => { const d = snap.data() || {}; if (!state.data2025[m.key].tinta) state.data2025[m.key].tinta = {}; state.data2025[m.key].tinta.gasto = d.gasto ?? state.data2025[m.key].tinta.gasto ?? ''; state.data2025[m.key].tinta.horas = d.horas ?? state.data2025[m.key].tinta.horas ?? ''; save(); renderSoon(); });
-        onSnapshot(docMonth('multas', m.key), (snap) => { const d = snap.data() || {}; if (!state.data2025[m.key].multas) state.data2025[m.key].multas = {}; state.data2025[m.key].multas.valor = d.valor ?? state.data2025[m.key].multas.valor ?? ''; state.data2025[m.key].multas.bop2 = d.bop2 ?? state.data2025[m.key].multas.bop2 ?? ''; save(); renderSoon(); });
-        onSnapshot(docMonth('garantias', m.key), (snap) => { const d = snap.data() || {}; if (!state.data2025[m.key].garantias) state.data2025[m.key].garantias = {}; state.data2025[m.key].garantias.garantia = d.garantia ?? state.data2025[m.key].garantias.garantia ?? ''; state.data2025[m.key].garantias.faturamento = d.faturamento ?? state.data2025[m.key].garantias.faturamento ?? ''; save(); renderSoon(); });
-        onSnapshot(docMonth('scraps', m.key), (snap) => { const d = snap.data() || {}; if (!state.data2025[m.key].scraps) state.data2025[m.key].scraps = {}; state.data2025[m.key].scraps.valor = d.valor ?? state.data2025[m.key].scraps.valor ?? ''; save(); renderSoon(); });
-        onSnapshot(docMonth('projecoes', m.key), (snap) => { const d = snap.data() || {}; if (!state.data2025[m.key].prev) state.data2025[m.key].prev = { tinta:'',multas:'',garantias:'',scraps:'' }; state.data2025[m.key].prev.tinta = d.tinta ?? state.data2025[m.key].prev.tinta ?? ''; state.data2025[m.key].prev.multas = d.multas ?? state.data2025[m.key].prev.multas ?? ''; state.data2025[m.key].prev.garantias = d.garantias ?? state.data2025[m.key].prev.garantias ?? ''; state.data2025[m.key].prev.scraps = d.scraps ?? state.data2025[m.key].prev.scraps ?? ''; save(); renderSoon(); });
+        onSnapshot(docMonth('tinta', m.key), (snap) => {
+        const d = snap.data() || {};
+        if (!state.data2025[m.key].tinta) state.data2025[m.key].tinta = {};
+        state.data2025[m.key].tinta.gasto = ('gasto' in d) ? (d.gasto ?? '') : '';
+        state.data2025[m.key].tinta.horas = ('horas' in d) ? (d.horas ?? '') : '';
+        save(); buildSectionTables();
+      });
+        onSnapshot(docMonth('multas', m.key), (snap) => {
+        const d = snap.data() || {};
+        if (!state.data2025[m.key].multas) state.data2025[m.key].multas = {};
+        state.data2025[m.key].multas.valor = ('valor' in d) ? (d.valor ?? '') : '';
+        state.data2025[m.key].multas.bop2  = ('bop2'  in d) ? (d.bop2  ?? '') : '';
+        save(); buildSectionTables();
+      });
+        onSnapshot(docMonth('garantias', m.key), (snap) => {
+        const d = snap.data() || {};
+        if (!state.data2025[m.key].garantias) state.data2025[m.key].garantias = {};
+        state.data2025[m.key].garantias.garantia    = ('garantia' in d) ? (d.garantia ?? '') : '';
+        state.data2025[m.key].garantias.faturamento = ('faturamento' in d) ? (d.faturamento ?? '') : '';
+        save(); buildSectionTables();
+      });
+        onSnapshot(docMonth('scraps', m.key), (snap) => {
+        const d = snap.data() || {};
+        if (!state.data2025[m.key].scraps) state.data2025[m.key].scraps = {};
+        state.data2025[m.key].scraps.valor = ('valor' in d) ? (d.valor ?? '') : '';
+        save(); buildSectionTables();
+      });
+        onSnapshot(docMonth('projecoes', m.key), (snap) => {
+        const d = snap.data() || {};
+        if (!state.data2025[m.key].prev) state.data2025[m.key].prev = { tinta:'',multas:'',garantias:'',scraps:'' };
+        state.data2025[m.key].prev.tinta     = ('tinta'     in d) ? (d.tinta     ?? '') : '';
+        state.data2025[m.key].prev.multas    = ('multas'    in d) ? (d.multas    ?? '') : '';
+        state.data2025[m.key].prev.garantias = ('garantias' in d) ? (d.garantias ?? '') : '';
+        state.data2025[m.key].prev.scraps    = ('scraps'    in d) ? (d.scraps    ?? '') : '';
+        save(); buildSectionTables();
+      });
       } catch (e) { console.warn('onSnapshot mes', m.key, e); }
     });
   }
