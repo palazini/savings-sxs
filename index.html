@@ -246,10 +246,9 @@
           { ...norm, lastEditedAt: serverTimestamp(), lastEditedBy: currentUser?.uid || 'anon' },
           { merge: true }
         );
-      } catch (e) { console.warn('Falha ao salvar', key, e); }
-    }, 350);
-  }, { merge: true }); }
-      catch (e) { console.warn('Falha ao salvar', key, e); }
+      } catch (e) {
+        console.warn('Falha ao salvar', key, e);
+      }
     }, 350);
   }
   function queueConfig(patch) { queueWrite('config', docConfig, patch); }
